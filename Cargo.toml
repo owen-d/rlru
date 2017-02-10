@@ -1,0 +1,6 @@
+[package]
+name = "rlru"
+version = "0.1.0"
+authors = ["owen-d <ow.diehl@gmail.com>"]
+
+[dependencies]
