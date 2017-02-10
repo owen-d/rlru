@@ -31,18 +31,10 @@ impl <K: Eq + std::hash::Hash, V> LRU <K, V> {
     }
     pub fn set(&mut self, key: K, val: V) -> &mut LRU<K, V>{
         use std::collections::hash_map::Entry;
-        if let Some(node) = self.cache.get(&key) {
-            // remove node from linked list, and replace at head
-            self
-        } else {
-            let addition = Node {
-                prev: None,
-                // wrap it in a layer of indirection if exists.
-                next: self.head.map(|x| Box::new(x)),
-                val: val
-            };
-            self.head = Some(addition);
-            self
+
+        match self.cache.entry(&key) {
+            Entry::Occupied(_, val) => {},
+            Entry::Vacant(_) => {}
         }
     }
 }
