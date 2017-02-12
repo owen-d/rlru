@@ -5,6 +5,7 @@
 // #clear
 //has
 use std::collections::HashMap;
+use std::rc::Rc;
 
 // Doubly linked list
 struct Node <V> {
@@ -14,14 +15,14 @@ struct Node <V> {
 }
 
 pub struct LRU <K, V> {
-    cache: HashMap<K, V>,
+    cache: HashMap<K, Node<V>>,
     head: Option<Node<V>>,
     tail: Option<Node<V>>,
     len: u16,
 }
 
-impl <K: Eq + std::hash::Hash, V> LRU <K, V> {
-    pub fn new() -> LRU<K, V> {
+impl <K: Eq + std::hash::Hash + Copy, V> LRU <K, V> {
+    pub fn new() -> Self {
         LRU {
             cache: HashMap::new(),
             head: None,
@@ -32,10 +33,20 @@ impl <K: Eq + std::hash::Hash, V> LRU <K, V> {
     pub fn set(&mut self, key: K, val: V) -> &mut LRU<K, V>{
         use std::collections::hash_map::Entry;
 
-        match self.cache.entry(&key) {
-            Entry::Occupied(_, val) => {},
-            Entry::Vacant(_) => {}
-        }
+        match self.cache.entry(key) {
+            Entry::Occupied(node) => {},
+            Entry::Vacant(_) => {
+                let node = Node {
+                    prev: self.head.take().map(|x| Box::new(x)),
+                    next: None,
+                    val: val
+                };
+                self.cache.insert(key, node);
+                self.head = Some(node);
+            }
+        };
+
+        self
     }
 }
 
