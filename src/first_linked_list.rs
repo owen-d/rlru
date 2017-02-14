@@ -1,46 +1,3 @@
-// #get
-// #set
-// #peek
-// #new
-// #clear
-//has
-
-// Doubly linked list
-// struct Node <V> {
-//     prev: Option<Box<Node<V>>>,
-//     next: Option<Box<Node<V>>>,
-//     val: V,
-// }
-
-// pub struct LRU <K, V> {
-//     cache: HashMap<K, Node<V>>,
-//     head: Option<Node<V>>,
-//     tail: Option<Node<V>>,
-//     len: u16,
-// }
-
-// impl <K: Eq + std::hash::Hash + Copy, V> LRU <K, V> {
-//     pub fn new() -> Self {
-//         LRU {
-//             cache: HashMap::new(),
-//             head: None,
-//             tail: None,
-//             len: 0
-//         }
-//     }
-//     pub fn set(&mut self, key: &K, val: V) -> &mut LRU<K, V>{
-//         use std::collections::hash_map::Entry;
-
-//         match self.cache.get_mut(K).take() {
-//             None => None,
-//             Some(node) => {
-//                 let node = *node;
-//                 self.head = 
-//             }
-//         }
-//         self
-//     }
-// }
 
 struct Node <V> {
     next: Option<Box<Node<V>>>,
@@ -82,6 +39,11 @@ impl <V> LinkedList <V> {
     pub fn peek_mut(&mut self) -> Option<&mut V> {
         self.head.as_mut().map(|x| &mut x.val)
     }
+
+    // Iterator
+    pub fn into_iter(self) -> IntoIter<V> {
+        IntoIter(self)
+    }
 }
 
 impl <V> Drop for LinkedList <V> {
@@ -94,6 +56,38 @@ impl <V> Drop for LinkedList <V> {
 }
 
 pub struct IntoIter<T>(LinkedList<T>);
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.pop()
+    }
+}
+
+// Break
+
+pub struct Iter<'a, T: 'a> {
+    next: Option<&'a Node<T>>,
+}
+
+impl<T> LinkedList<T> {
+    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+        Iter {
+            next: self.head.as_ref().map(|node| node)
+        }
+    }
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next.map(|node| {
+            self.next = node.next.as_ref().map(|node| &**node);
+            &node.val
+        })
+    }
+}
+
 
 
 mod test {
@@ -136,5 +130,27 @@ mod test {
 
         assert_eq!(list.peek(), Some(&3));
         assert_eq!(list.peek_mut(), Some(&mut 3));
+    }
+
+    #[test]
+    fn into_iter() {
+        let mut list = LinkedList::new();
+        list.push(1); list.push(2); list.push(3);
+
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next(), Some(3));
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(iter.next(), Some(1));
+    }
+
+    #[test]
+    fn iter() {
+        let mut list = LinkedList::new();
+        list.push(1); list.push(2); list.push(3);
+
+        let mut iter = list.iter();
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&1));
     }
 }
