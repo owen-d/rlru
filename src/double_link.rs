@@ -83,6 +83,21 @@ impl<T> DoubleLink<T> {
             Rc::try_unwrap(old_head).ok().unwrap().into_inner().elem
         })
     }
+
+    fn pop_tail(&mut self) -> Option<T> {
+        self.tail.take().map(|old_tail| {
+            match old_tail.borrow_mut().prev.take() {
+                Some(new_tail) => {
+                    new_tail.borrow_mut().next.take();
+                    self.tail = Some(new_tail);
+                },
+                None => {
+                    self.head.take();
+                }
+            };
+            Rc::try_unwrap(old_tail).ok().unwrap().into_inner().elem
+        })
+    }
 }
 
 #[cfg(test)]
@@ -96,12 +111,12 @@ mod test {
         // Check empty list behaves right
         assert_eq!(list.pop_head(), None);
 
-        // // Populate list
+        // Populate list
         list.push_head(1);
         list.push_head(2);
         list.push_head(3);
 
-        // // Check normal removal
+        // Check normal removal
         assert_eq!(list.pop_head(), Some(3));
         assert_eq!(list.pop_head(), Some(2));
 
@@ -116,5 +131,27 @@ mod test {
         // Check exhaustion
         assert_eq!(list.pop_head(), Some(1));
         assert_eq!(list.pop_head(), None);
+    }
+
+    #[test]
+    fn backwards() {
+        let mut list = DoubleLink::new();
+
+        // Populate list
+        list.push_tail(1);
+        list.push_tail(2);
+        list.push_tail(3);
+
+        // check backwards removal
+        assert_eq!(list.pop_tail(), Some(3));
+        assert_eq!(list.pop_tail(), Some(2));
+
+        // push after pops
+        list.push_tail(4).push_tail(5);
+        assert_eq!(list.pop_tail(), Some(5));
+        assert_eq!(list.pop_tail(), Some(4));
+
+        assert_eq!(list.pop_tail(), Some(1));
+        assert_eq!(list.pop_tail(), None);
     }
 }
