@@ -116,6 +116,10 @@ impl<T> DoubleLink<T> {
     fn peek_tail_mut(&mut self) -> Option<RefMut<T>> {
         self.tail.as_mut().map(|node| RefMut::map(node.borrow_mut(), |node| &mut node.elem))
     }
+
+    fn into_iter(self) -> IntoIter<T> {
+        IntoIter(self)
+    }
 }
 
 impl<T> Drop for DoubleLink<T> {
@@ -123,6 +127,22 @@ impl<T> Drop for DoubleLink<T> {
         while self.pop_head().is_some() {}
     }
 }
+
+pub struct IntoIter<T>(DoubleLink<T>);
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<T> {
+        self.0.pop_head()
+    }
+}
+
+impl<T> DoubleEndedIterator for IntoIter<T> {
+    fn next_back(&mut self) -> Option<T> {
+        self.0.pop_tail()
+    }
+}
+
 
 #[cfg(test)]
 mod test {
@@ -196,4 +216,17 @@ mod test {
         assert_eq!(&*list.peek_tail().unwrap(), &1);
         assert_eq!(&mut *list.peek_tail_mut().unwrap(), &mut 1);
     }
+
+    #[test]
+    fn into_iter() {
+        let mut list = DoubleLink::new();
+        list.push_head(1); list.push_head(2); list.push_head(3);
+
+        let mut iter = list.into_iter();
+        assert_eq!(iter.next(), Some(3));
+        assert_eq!(iter.next_back(), Some(1));
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(iter.next_back(), None);
+        assert_eq!(iter.next(), None);
+}
 }
