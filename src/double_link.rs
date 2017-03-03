@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::cell::{RefCell};
+use std::cell::{Ref, RefMut, RefCell};
 
 type Link<T> = Option<Rc<RefCell<Node<T>>>>;
 
@@ -42,7 +42,7 @@ impl<T> DoubleLink<T> {
                 new_node.borrow_mut().next = Some(prev_head);
                 // set self's head to new node
                 self.head = Some(new_node);
-            },
+            }
             None => {
                 self.head = Some(new_node.clone());
                 self.tail = Some(new_node);
@@ -58,7 +58,7 @@ impl<T> DoubleLink<T> {
                 prev_tail.borrow_mut().next = Some(new_node.clone());
                 new_node.borrow_mut().prev = Some(prev_tail);
                 self.tail = Some(new_node);
-            },
+            }
             None => {
                 self.head = Some(new_node.clone());
                 self.tail = Some(new_node);
@@ -74,9 +74,10 @@ impl<T> DoubleLink<T> {
                     // remove the reference to the previous head.
                     new_head.borrow_mut().prev.take();
                     self.head = Some(new_head);
-                },
+                }
                 None => {
-                    // If we've consumed the end of the list, we need to update the tail property. head has already been set to none via the 'take' call earlier.
+                    // If we've consumed the end of the list, we need to update the tail property.
+                    // head has already been set to none via the 'take' call earlier.
                     self.tail.take();
                 }
             };
@@ -90,13 +91,36 @@ impl<T> DoubleLink<T> {
                 Some(new_tail) => {
                     new_tail.borrow_mut().next.take();
                     self.tail = Some(new_tail);
-                },
+                }
                 None => {
                     self.head.take();
                 }
             };
             Rc::try_unwrap(old_tail).ok().unwrap().into_inner().elem
         })
+    }
+
+
+    fn peek_head(&mut self) -> Option<Ref<T>> {
+        self.head.as_ref().map(|node| Ref::map(node.borrow(), |node| &node.elem))
+    }
+
+    fn peek_tail(&mut self) -> Option<Ref<T>> {
+        self.tail.as_ref().map(|node| Ref::map(node.borrow(), |node| &node.elem))
+    }
+
+    fn peek_head_mut(&mut self) -> Option<RefMut<T>> {
+        self.head.as_mut().map(|node| RefMut::map(node.borrow_mut(), |node| &mut node.elem))
+    }
+
+    fn peek_tail_mut(&mut self) -> Option<RefMut<T>> {
+        self.tail.as_mut().map(|node| RefMut::map(node.borrow_mut(), |node| &mut node.elem))
+    }
+}
+
+impl<T> Drop for DoubleLink<T> {
+    fn drop(&mut self) {
+        while self.pop_head().is_some() {}
     }
 }
 
@@ -142,7 +166,7 @@ mod test {
         list.push_tail(2);
         list.push_tail(3);
 
-        // check backwards removal
+        // check tailwards removal
         assert_eq!(list.pop_tail(), Some(3));
         assert_eq!(list.pop_tail(), Some(2));
 
@@ -153,5 +177,23 @@ mod test {
 
         assert_eq!(list.pop_tail(), Some(1));
         assert_eq!(list.pop_tail(), None);
+    }
+
+    #[test]
+    fn peek() {
+        let mut list = DoubleLink::new();
+        assert!(list.peek_head().is_none());
+        assert!(list.peek_tail().is_none());
+        assert!(list.peek_head_mut().is_none());
+        assert!(list.peek_tail_mut().is_none());
+
+        list.push_head(1);
+        list.push_head(2);
+        list.push_head(3);
+
+        assert_eq!(&*list.peek_head().unwrap(), &3);
+        assert_eq!(&mut *list.peek_head_mut().unwrap(), &mut 3);
+        assert_eq!(&*list.peek_tail().unwrap(), &1);
+        assert_eq!(&mut *list.peek_tail_mut().unwrap(), &mut 1);
     }
 }
