@@ -47,9 +47,8 @@ impl<K, V> Rlru<K, V>
     }
 
     fn length_upkeep(&mut self) -> &mut Self {
-        let max = self.max_length as usize;
         match self.cache.len() {
-            0...max => self,
+            len if len < self.max_length as usize => self,
             // placeholder. Will pop off LRU key.
             _ => self
         }
@@ -58,14 +57,19 @@ impl<K, V> Rlru<K, V>
     fn splice_node(&mut self, node: Rc<RefCell<Node<V>>>) {
         // update node's prev/next pointers to link to each other
         {
-            let node = node.borrow_mut();
-            node.prev.map(|prev_node| {
+            let mut node = node.borrow_mut();
+
+            // First we use cloning via Rc pointers, but will clean up our references via 'take' in the next_node routine
+            node.prev.clone().map(|prev_node| {
                 prev_node.borrow_mut().next = node.next.clone();
             });
+
+            // here we take the extracted node's remaining pointers.
             node.next.take().map(|next_node| {
                 next_node.borrow_mut().prev = node.prev.take();
             });
         }
+
         // insert node at head of rlru.
         self.push(node);
     }
@@ -81,15 +85,15 @@ impl<K, V> Rlru<K, V>
 
     fn pop(&mut self) {
         self.tail.take().map(|node| {
-            if node.borrow_mut().prev.is_none() {
+            if node.borrow().prev.is_none() {
                 // have to worry about updating head.
                 self.head.take();
             }
-            self.tail = node.borrow_mut().prev;
+            self.tail = node.borrow_mut().prev.take();
         });
     }
 
-    pub fn get(&mut self, key: K) -> Option<&V> {
+    pub fn get<'a>(&'a mut self, key: K) -> Option<&'a V> {
         match self.cache.entry(key) {
             Entry::Occupied(entry) => {
                 // splice node to front
