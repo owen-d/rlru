@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::rc::Rc;
-use std::cell::RefCell;
+// use std::cell::RefCell;
 
 struct Rlru<K, V>
     where K: Eq + Hash
 {
-    cache: HashMap<K, Rc<RefCell<Node<V>>>>,
+    cache: HashMap<K, Rc<Node<V>>>,
     head: Link<V>,
     tail: Link<V>,
     max_length: u32,
@@ -15,12 +15,22 @@ struct Rlru<K, V>
 
 
 struct Node<T> {
-    elem: Option<Rc<RefCell<T>>>,
+    elem: T,
     prev: Link<T>,
     next: Link<T>,
 }
 
-type Link<T> = Option<Rc<RefCell<Node<T>>>>;
+impl<T> Node<T> {
+    fn new(elem: T) -> Self {
+        Node {
+            elem: elem,
+            prev: None,
+            next: None,
+        }
+    }
+}
+
+type Link<T> = Option<Rc<Node<T>>>;
 
 
 
@@ -39,15 +49,35 @@ impl<K, V> Rlru<K, V>
     fn length_upkeep(&mut self) -> &mut Self {
         let max = self.max_length as usize;
         match self.cache.len() {
-            0...max => &mut self,
+            0...max => self,
             // placeholder. Will pop off LRU key.
-            _ => &mut self
+            _ => self
         }
     }
 
-    fn splice_node(&mut self, new_node: Node<V>) {
+    fn splice_node(&mut self, node: Node<V>) {
         // update node's prev/next pointers to link to each other
         // insert node at head of rlru.
+    }
+
+    fn push(&mut self, node: Node<V>) -> &mut Self {
+        let node = Rc::new(node);
+        self.head.take().map(|prev_head| {
+            prev_head.prev = Some(node.clone());
+            node.next = Some(prev_head);
+        });
+        self.head = Some(node.clone());
+        self
+    }
+
+    fn pop(&mut self) {
+        self.tail.take().map(|node| {
+            if node.prev.is_none() {
+                // have to worry about updating head.
+                self.head.take();
+            }
+            self.tail = node.prev;
+        });
     }
 
     pub fn get(&mut self, key: K) -> Option<&V> {
@@ -63,11 +93,11 @@ impl<K, V> Rlru<K, V>
         match self.cache.entry(key) {
             Entry::Occupied(node) => {
                 // splice node to front & update value
-                &mut self;
+                self
             },
             Entry::Vacant(_) =>  {
                 // insert node to front & do ln upkeep
-                &mut self;
+                self
             }
         }
     }
