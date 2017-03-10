@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::cell::{RefCell, Ref};
 
 struct Rlru<K, V>
-    where K: Eq + Hash
+    where K: Eq + Hash + Clone
 {
     cache: HashMap<K, Rc<RefCell<Node<V>>>>,
     head: Link<V>,
@@ -35,7 +35,7 @@ type Link<T> = Option<Rc<RefCell<Node<T>>>>;
 
 
 impl<K, V> Rlru<K, V>
-    where K: Eq + Hash
+    where K: Eq + Hash + Clone
 {
     pub fn new() -> Self {
         Rlru {
@@ -93,16 +93,17 @@ impl<K, V> Rlru<K, V>
         });
     }
 
-    pub fn get<'a>(&'a mut self, key: K) -> Option<&'a V> {
-        match self.cache.entry(key) {
-            Entry::Occupied(entry) => {
-                // splice node to front
-                let found = entry.get();
-                self.splice_node(found.clone());
-                Some(&found.as_ref().borrow().elem)
-            },
-            Entry::Vacant(_) => None
+    pub fn get(&mut self, key: K) -> Option<Ref<V>> {
+        if let Some(node) = self.cache.remove(&key) {
+            self.splice_node(node.clone());
+            self.cache.insert(key.clone(), node);
+            self.cache.get(&key).map(|node| {
+                Ref::map(node.as_ref().borrow(), |x| &x.elem)
+            })
+        } else {
+            None
         }
+
     }
 
     pub fn set(&mut self, key: K, elem: V) -> &mut Self {
