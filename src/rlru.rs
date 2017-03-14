@@ -54,7 +54,7 @@ impl<K, V> Rlru<K, V>
         }
     }
 
-    fn splice_node(&mut self, node: Rc<RefCell<Node<V>>>) {
+    fn splice_node(&mut self, node: Rc<RefCell<Node<V>>>, push_front: bool) {
         // update node's prev/next pointers to link to each other
         {
             let mut node = node.borrow_mut();
@@ -71,7 +71,9 @@ impl<K, V> Rlru<K, V>
         }
 
         // insert node at head of rlru.
-        self.push(node);
+        if push_front {
+            self.push(node);
+        }
     }
 
     fn push(&mut self, node: Rc<RefCell<Node<V>>>) -> &mut Self {
@@ -93,29 +95,31 @@ impl<K, V> Rlru<K, V>
         });
     }
 
-    pub fn get(&mut self, key: K) -> Option<Ref<V>> {
-        if let Some(node) = self.cache.remove(&key) {
-            self.splice_node(node.clone());
-            self.cache.insert(key.clone(), node);
-            self.cache.get(&key).map(|node| {
-                Ref::map(node.as_ref().borrow(), |x| &x.elem)
-            })
-        } else {
-            None
-        }
+    pub fn get(&mut self, key: &K) -> Option<Ref<V>> {
+        // Update node positions
+        self.cache.get(key)
+            .map(|node| node.clone())
+            .map(|node| self.splice_node(node, true));
 
+        // Return the ref.
+        self.cache.get(key)
+            .map(|node| {
+                Ref::map(node.borrow(), |node| &node.elem)
+            })
     }
 
     pub fn set(&mut self, key: K, elem: V) -> &mut Self {
-        match self.cache.entry(key) {
-            Entry::Occupied(node) => {
-                // splice node to front & update value
-                self
-            },
-            Entry::Vacant(_) =>  {
-                // insert node to front & do ln upkeep
-                self
-            }
-        }
+        let mut new_node = Node::new(elem);
+
+        self.cache.remove(&key)
+            .map(|old_node| {
+                self.splice_node(old_node, false);
+            });
+
+        new_node.next = self.head.take();
+        let new_node = Rc::new(RefCell::new(new_node));
+        self.head = Some(new_node.clone());
+        self.cache.insert(key, new_node);
+        self
     }
 }
