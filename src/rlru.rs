@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::rc::Rc;
 use std::cell::{RefCell, Ref};
+use std::fmt::Display;
 
 struct Rlru<K, V>
     where K: Eq + Hash + Clone
@@ -12,7 +13,6 @@ struct Rlru<K, V>
     tail: Link<V>,
     max_length: u32,
 }
-
 
 struct Node<T> {
     elem: T,
@@ -35,7 +35,8 @@ type Link<T> = Option<Rc<RefCell<Node<T>>>>;
 
 
 impl<K, V> Rlru<K, V>
-    where K: Eq + Hash + Clone
+    where K: Eq + Hash + Clone,
+          V: Display
 {
     pub fn new() -> Self {
         Rlru {
@@ -82,17 +83,21 @@ impl<K, V> Rlru<K, V>
             node.borrow_mut().next = Some(prev_head);
         });
         self.head = Some(node.clone());
+        self.length_upkeep();
         self
     }
 
-    fn pop(&mut self) {
+    fn pop(&mut self) -> Option<V> {
         self.tail.take().map(|node| {
             if node.borrow().prev.is_none() {
                 // have to worry about updating head.
                 self.head.take();
             }
             self.tail = node.borrow_mut().prev.take();
-        });
+            let mut node = Rc::try_unwrap(node);
+            let mut node = node.ok().unwrap().into_inner();
+            node.elem
+        })
     }
 
     pub fn get(&mut self, key: &K) -> Option<Ref<V>> {
@@ -118,8 +123,47 @@ impl<K, V> Rlru<K, V>
 
         new_node.next = self.head.take();
         let new_node = Rc::new(RefCell::new(new_node));
-        self.head = Some(new_node.clone());
+        self.push(new_node.clone());
+
+        // update tail, assuming this is the only node.
+        if self.tail.is_none() {
+            self.tail = Some(new_node.clone());
+        }
+
         self.cache.insert(key, new_node);
         self
+    }
+}
+
+mod test {
+    use super::Rlru;
+
+    #[test]
+    fn basics() {
+        let mut lru = Rlru::new();
+
+        lru.set("a", 1)
+            .set("b", 2)
+            .set("c", 3);
+
+        assert_eq!(lru.tail.is_some(), true);
+
+        lru.tail.take().map(|node| {
+            assert_eq!(node.borrow().elem, 1);
+            //replace
+            lru.tail = Some(node);
+        });
+
+
+        let second = lru.get(&"b")
+            .map(|x| *x);
+        assert_eq!(second, Some(2));
+
+        assert_eq!(lru.head.is_some(), true);
+
+        lru.head.take().map(|node| {
+            assert_eq!(node.borrow().elem, 2);
+        });
+
     }
 }
