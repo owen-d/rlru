@@ -133,6 +133,39 @@ impl<K, V> Rlru<K, V>
         self.cache.insert(key, new_node);
         self
     }
+
+    // Iterator
+    pub fn into_iter(mut self) -> IntoIter<V> {
+        self.cache.clear();
+        IntoIter {
+            next: self.head
+        }
+    }
+}
+
+pub struct IntoIter<T> {
+    next: Link<T>
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next.take()
+            .map(|node| {
+                node.borrow_mut().next.take().map(|next_node| {
+                    // reach next node, removing ref to cur.
+                    next_node.borrow_mut().prev.take();
+                    self.next = Some(next_node);
+                });
+
+                Rc::try_unwrap(node)
+                    .ok()
+                    .map(|node| {
+                        node.into_inner().elem
+                    })
+                    .unwrap()
+            })
+    }
 }
 
 mod test {
@@ -165,5 +198,18 @@ mod test {
             assert_eq!(node.borrow().elem, 2);
         });
 
+    }
+
+    #[test]
+    fn into_iter() {
+        let mut lru = Rlru::new();
+
+        lru.set("a", 1)
+            .set("b", 2)
+            .set("c", 3);
+
+        let mut iter = lru.into_iter();
+        let innards = iter.collect::<Vec<_>>();
+        assert_eq!(innards, [3, 2, 1]);
     }
 }
