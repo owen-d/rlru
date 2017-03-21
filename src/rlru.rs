@@ -11,7 +11,7 @@ struct Rlru<K, V>
     cache: HashMap<K, Rc<RefCell<Node<V>>>>,
     head: Link<V>,
     tail: Link<V>,
-    max_length: u32,
+    max_length: u64,
 }
 
 struct Node<T> {
@@ -43,7 +43,7 @@ impl<K, V> Rlru<K, V>
             cache: HashMap::new(),
             head: None,
             tail: None,
-            max_length: 0,
+            max_length: 10,
         }
     }
 
@@ -51,7 +51,10 @@ impl<K, V> Rlru<K, V>
         match self.cache.len() {
             len if len < self.max_length as usize => self,
             // placeholder. Will pop off LRU key.
-            _ => self
+            _ => {
+                self.pop();
+                self
+            }
         }
     }
 
@@ -167,6 +170,7 @@ impl<T> Iterator for IntoIter<T> {
 
 mod test {
     use super::Rlru;
+    use super::HashMap;
 
     #[test]
     fn basics() {
@@ -220,5 +224,22 @@ mod test {
 
         let innards = lru.into_iter().collect::<Vec<_>>();
         assert_eq!(innards, [4, 3, 1]);
+    }
+
+    #[test]
+    fn limits() {
+        let mut lru = Rlru {
+            cache: HashMap::new(),
+            head: None,
+            tail: None,
+            max_length: 2
+        };
+
+        lru.set("a", 1)
+            .set("b", 2)
+            .set("c", 3);
+
+        let innards = lru.into_iter().collect::<Vec<_>>();
+        assert_eq!(innards, [3, 2]);
     }
 }
