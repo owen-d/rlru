@@ -35,7 +35,7 @@ type Link<T> = Option<Rc<RefCell<Node<T>>>>;
 
 
 impl<K, V> Rlru<K, V>
-    where K: Eq + Hash + Clone,
+    where K: Display + Eq + Hash + Clone,
           V: Display
 {
     pub fn new() -> Self {
@@ -61,14 +61,13 @@ impl<K, V> Rlru<K, V>
             let mut node = node.borrow_mut();
 
             // First we use cloning via Rc pointers, but will clean up our references via 'take' in the next_node routine
-            node.prev.clone().map(|prev_node| {
-                prev_node.borrow_mut().next = node.next.clone();
-            });
+            node.prev.clone().map_or_else(
+                // If this was the head of the list, we must update the head pointer to the new head.
+                || self.head = node.next.clone(),
+                |prev_node| prev_node.borrow_mut().next = node.next.clone());
 
             // here we take the extracted node's remaining pointers.
-            node.next.take().map(|next_node| {
-                next_node.borrow_mut().prev = node.prev.take();
-            });
+            node.next.take().map(|next_node| next_node.borrow_mut().prev = node.prev.take());
         }
 
         // insert node at head of rlru.
@@ -114,15 +113,13 @@ impl<K, V> Rlru<K, V>
     }
 
     pub fn set(&mut self, key: K, elem: V) -> &mut Self {
-        let mut new_node = Node::new(elem);
+        let new_node = Rc::new(RefCell::new(Node::new(elem)));
 
         self.cache.remove(&key)
             .map(|old_node| {
                 self.splice_node(old_node, false);
             });
 
-        new_node.next = self.head.take();
-        let new_node = Rc::new(RefCell::new(new_node));
         self.push(new_node.clone());
 
         // update tail, assuming this is the only node.
@@ -211,5 +208,17 @@ mod test {
         let mut iter = lru.into_iter();
         let innards = iter.collect::<Vec<_>>();
         assert_eq!(innards, [3, 2, 1]);
+    }
+
+    #[test]
+    fn ordering() {
+        let mut lru = Rlru::new();
+        lru.set("a", 1)
+            .set("b", 2)
+            .set("c", 3)
+            .set("b", 4);
+
+        let innards = lru.into_iter().collect::<Vec<_>>();
+        assert_eq!(innards, [4, 3, 1]);
     }
 }
