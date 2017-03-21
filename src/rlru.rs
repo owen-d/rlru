@@ -8,21 +8,23 @@ use std::fmt::Display;
 struct Rlru<K, V>
     where K: Eq + Hash + Clone
 {
-    cache: HashMap<K, Rc<RefCell<Node<V>>>>,
-    head: Link<V>,
-    tail: Link<V>,
+    cache: HashMap<K, Rc<RefCell<Node<K, V>>>>,
+    head: Link<K, V>,
+    tail: Link<K, V>,
     max_length: u64,
 }
 
-struct Node<T> {
-    elem: T,
-    prev: Link<T>,
-    next: Link<T>,
+struct Node<K, V> {
+    key: K,
+    elem: V,
+    prev: Link<K, V>,
+    next: Link<K, V>,
 }
 
-impl<T> Node<T> {
-    fn new(elem: T) -> Self {
+impl<K, V> Node<K, V> {
+    fn new(key: K, elem: V) -> Self {
         Node {
+            key: key,
             elem: elem,
             prev: None,
             next: None,
@@ -30,7 +32,7 @@ impl<T> Node<T> {
     }
 }
 
-type Link<T> = Option<Rc<RefCell<Node<T>>>>;
+type Link<K, V> = Option<Rc<RefCell<Node<K, V>>>>;
 
 
 
@@ -52,13 +54,15 @@ impl<K, V> Rlru<K, V>
             len if len < self.max_length as usize => self,
             // placeholder. Will pop off LRU key.
             _ => {
-                self.pop();
+                self.pop().map(|node| {
+
+                });
                 self
             }
         }
     }
 
-    fn splice_node(&mut self, node: Rc<RefCell<Node<V>>>, push_front: bool) {
+    fn splice_node(&mut self, node: Rc<RefCell<Node<K, V>>>, push_front: bool) {
         // update node's prev/next pointers to link to each other
         {
             let mut node = node.borrow_mut();
@@ -79,7 +83,7 @@ impl<K, V> Rlru<K, V>
         }
     }
 
-    fn push(&mut self, node: Rc<RefCell<Node<V>>>) -> &mut Self {
+    fn push(&mut self, node: Rc<RefCell<Node<K, V>>>) -> &mut Self {
         self.head.take().map(|prev_head| {
             prev_head.borrow_mut().prev = Some(node.clone());
             node.borrow_mut().next = Some(prev_head);
@@ -102,6 +106,33 @@ impl<K, V> Rlru<K, V>
         })
     }
 
+    fn pop_head(&mut self) -> Option<V> {
+        self.head.take()
+            .map(|node| {
+                {
+                    let mutable = node.borrow_mut();
+                    println!("{}", mutable.elem);
+                }
+                node.borrow_mut().next.take().map(|next_node| {
+                    // reach next node, removing ref to cur.
+                    {
+                        let mut mut_next = next_node.borrow_mut();
+                        println!("next val: {}", mut_next.elem);
+                    }
+                    next_node.borrow_mut().prev.take();
+                    self.head = Some(next_node);
+                });
+
+                Rc::try_unwrap(node)
+                    .ok()
+                    .map(|node| {
+                        node.into_inner().elem
+                    })
+                    .unwrap()
+            })
+
+    }
+
     pub fn get(&mut self, key: &K) -> Option<Ref<V>> {
         // Update node positions
         self.cache.get(key)
@@ -116,7 +147,7 @@ impl<K, V> Rlru<K, V>
     }
 
     pub fn set(&mut self, key: K, elem: V) -> &mut Self {
-        let new_node = Rc::new(RefCell::new(Node::new(elem)));
+        let new_node = Rc::new(RefCell::new(Node::new(key.clone(), elem)));
 
         self.cache.remove(&key)
             .map(|old_node| {
@@ -135,42 +166,24 @@ impl<K, V> Rlru<K, V>
     }
 
     // Iterator
-    pub fn into_iter(mut self) -> IntoIter<V> {
+    pub fn into_iter(mut self) -> IntoIter<K, V> {
         self.cache.clear();
-        IntoIter {
-            next: self.head
-        }
+        IntoIter(self)
     }
 }
 
-pub struct IntoIter<T> {
-    next: Link<T>
-}
+pub struct IntoIter<K: Display + Eq + Hash + Clone, V>(Rlru<K, V>);
 
-impl<T> Iterator for IntoIter<T> {
-    type Item = T;
+impl<K: Display + Eq + Hash + Clone, V: Display> Iterator for IntoIter<K, V> {
+    type Item = V;
     fn next(&mut self) -> Option<Self::Item> {
-        self.next.take()
-            .map(|node| {
-                node.borrow_mut().next.take().map(|next_node| {
-                    // reach next node, removing ref to cur.
-                    next_node.borrow_mut().prev.take();
-                    self.next = Some(next_node);
-                });
-
-                Rc::try_unwrap(node)
-                    .ok()
-                    .map(|node| {
-                        node.into_inner().elem
-                    })
-                    .unwrap()
-            })
+        self.0.pop_head()
     }
 }
 
 mod test {
     use super::Rlru;
-    use super::HashMap;
+    use std::collections::HashMap;
 
     #[test]
     fn basics() {
