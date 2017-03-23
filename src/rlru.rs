@@ -54,9 +54,7 @@ impl<K, V> Rlru<K, V>
             len if len < self.max_length as usize => self,
             // placeholder. Will pop off LRU key.
             _ => {
-                self.pop().map(|node| {
-
-                });
+                self.pop();
                 self
             }
         }
@@ -67,9 +65,10 @@ impl<K, V> Rlru<K, V>
         {
             let mut node = node.borrow_mut();
 
-            // First we use cloning via Rc pointers, but will clean up our references via 'take' in the next_node routine
+            // First we use cloning via Rc pointers,
+            // but will clean up our references via 'take' in the next_node routine
             node.prev.clone().map_or_else(
-                // If this was the head of the list, we must update the head pointer to the new head.
+                // If this was the head of the list, we must update the head pointer to the new head
                 || self.head = node.next.clone(),
                 |prev_node| prev_node.borrow_mut().next = node.next.clone());
 
@@ -99,60 +98,57 @@ impl<K, V> Rlru<K, V>
                 // have to worry about updating head.
                 self.head.take();
             }
+
+            // Remove the ref to current node on the prev node
+            node.borrow_mut().prev.as_mut().map(|new_prev| new_prev.borrow_mut().next.take());
+
+            // Reassign self.tail ref & return elem
             self.tail = node.borrow_mut().prev.take();
-            let mut node = Rc::try_unwrap(node);
-            let mut node = node.ok().unwrap().into_inner();
-            node.elem
+            Rc::try_unwrap(node)
+                .ok()
+                .map(|node| node.into_inner().elem)
+                .unwrap()
         })
     }
 
     fn pop_head(&mut self) -> Option<V> {
-        self.head.take()
-            .map(|node| {
-                {
-                    let mutable = node.borrow_mut();
-                    println!("{}", mutable.elem);
-                }
-                node.borrow_mut().next.take().map(|next_node| {
-                    // reach next node, removing ref to cur.
-                    {
-                        let mut mut_next = next_node.borrow_mut();
-                        println!("next val: {}", mut_next.elem);
-                    }
-                    next_node.borrow_mut().prev.take();
-                    self.head = Some(next_node);
-                });
+        self.head.take().map(|node| {
+            if node.borrow().next.is_none() {
+                // have to worry about updating tail.
+                self.tail.take();
+            }
 
-                Rc::try_unwrap(node)
-                    .ok()
-                    .map(|node| {
-                        node.into_inner().elem
-                    })
-                    .unwrap()
-            })
+            // Remove the ref to current node on the next node
+            node.borrow_mut().next.as_mut().map(|new_next| new_next.borrow_mut().prev.take());
 
+            //Reassign self.head ref & return elem
+            self.head = node.borrow_mut().next.take();
+            Rc::try_unwrap(node)
+                .ok()
+                .map(|node| node.into_inner().elem)
+                .unwrap()
+        })
     }
 
     pub fn get(&mut self, key: &K) -> Option<Ref<V>> {
         // Update node positions
-        self.cache.get(key)
+        self.cache
+            .get(key)
             .map(|node| node.clone())
             .map(|node| self.splice_node(node, true));
 
         // Return the ref.
-        self.cache.get(key)
-            .map(|node| {
-                Ref::map(node.borrow(), |node| &node.elem)
-            })
+        self.cache
+            .get(key)
+            .map(|node| Ref::map(node.borrow(), |node| &node.elem))
     }
 
     pub fn set(&mut self, key: K, elem: V) -> &mut Self {
         let new_node = Rc::new(RefCell::new(Node::new(key.clone(), elem)));
 
-        self.cache.remove(&key)
-            .map(|old_node| {
-                self.splice_node(old_node, false);
-            });
+        self.cache
+            .remove(&key)
+            .map(|old_node| self.splice_node(old_node, false));
 
         self.push(new_node.clone());
 
@@ -245,7 +241,7 @@ mod test {
             cache: HashMap::new(),
             head: None,
             tail: None,
-            max_length: 2
+            max_length: 2,
         };
 
         lru.set("a", 1)
