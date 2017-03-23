@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::rc::Rc;
 use std::cell::{RefCell, Ref};
@@ -52,8 +51,11 @@ impl<K, V> Rlru<K, V>
     fn length_upkeep(&mut self) -> &mut Self {
         match self.cache.len() {
             len if len < self.max_length as usize => self,
-            // placeholder. Will pop off LRU key.
             _ => {
+                self.tail
+                    .as_ref()
+                    .map(|node| node.borrow().key.clone())
+                    .and_then(|key| self.cache.remove(&key));
                 self.pop();
                 self
             }
@@ -218,7 +220,7 @@ mod test {
             .set("b", 2)
             .set("c", 3);
 
-        let mut iter = lru.into_iter();
+        let iter = lru.into_iter();
         let innards = iter.collect::<Vec<_>>();
         assert_eq!(innards, [3, 2, 1]);
     }
